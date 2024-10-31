@@ -43,18 +43,21 @@ try:
     # Parse the content of the data page
     soup = BeautifulSoup(data_response.text, 'html.parser')
 
-
-
     # Find and download images (same logic as before)
-    images = soup.find_all('img')  # Finds all <img> tags
-    for i, img in enumerate(images):
-        img_url = img.get('src')
+    # images = soup.find_all('img')  # Finds all <img> tags
+    image_anchors = soup.find_all('a', class_='thumb')
+    for i, img_anchor in enumerate(image_anchors):
+        anchor_title = img_anchor.get('title')
+        img_url = img_anchor.get('href')
+        if anchor_title != "WISE432":
+            continue
 
-        # Check if the URL is relative or absolute
         if img_url.startswith('http'):
             full_img_url = img_url  # Absolute URL
         else:
             full_img_url = f"{base_url}/{img_url.lstrip('../')}"  # Convert to absolute URL
+
+        print(full_img_url)
 
         try:
             # Get the image content
@@ -77,6 +80,7 @@ try:
 
         # Optional: sleep to avoid overloading the server
         time.sleep(1)
+
 
 except requests.HTTPError as e:
     print(f"HTTP error occurred during login or data retrieval: {e}")  # Handle HTTP errors
