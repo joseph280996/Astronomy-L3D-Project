@@ -9,6 +9,7 @@ session = requests.Session()
 
 # Base URL for the website
 base_url = "http://202.189.117.101:8999"
+image_dir = 'downloaded_images'
 
 # URL of the login page
 login_url = f"{base_url}/gpne/index.php"
@@ -45,7 +46,41 @@ def fetch_likely_pn(object_id):
 
         # Extract the "Likely PN" value
         likely_pn_value = target_column.get_text(strip=True)
-        return object_id, likely_pn_value
+
+        image_anchors = soup.find_all('a', class_='thumb')
+        for i, img_anchor in enumerate(image_anchors):
+            anchor_title = img_anchor.get('title')
+            img_url = img_anchor.get('href')
+            if anchor_title != "WISE432":
+                continue
+
+            if img_url.startswith('http'):
+                full_img_url = img_url  # Absolute URL
+            else:
+                full_img_url = f"{base_url}/{img_url.lstrip('../')}"  # Convert to absolute URL
+
+            print(full_img_url)
+
+            try:
+                # Get the image content
+                img_response = session.get(full_img_url)
+                img_response.raise_for_status()  # Raises an error for HTTP errors
+
+                # Determine the image format from the URL
+                img_ext = full_img_url.split('.')[-1]  # Simple extraction; validate if needed
+                img_path = os.path.join(image_dir, f'image_{object_id}.{img_ext}')
+
+                # Save the image to the specified directory
+                with open(img_path, 'wb') as f:
+                    f.write(img_response.content)
+
+                print(f"Downloaded: {img_path}")
+
+            except requests.HTTPError as e:
+                # Log the error and skip this image
+                print(f"Failed to download {full_img_url}: {e}")
+
+        return object_id, likely_pn_value, f"{image_dir}/image{object_id}.{img_ext}"
 
     except Exception as e:
         print(f"Failed to retrieve data for ID {object_id}: {e}")
@@ -70,10 +105,10 @@ try:
         # Prepare to save results
         with open(output_file, 'w') as f_output:
             for future in as_completed(futures):
-                object_id, likely_pn_value = future.result()
+                object_id, likely_pn_value, img_path = future.result()
                 if likely_pn_value:
                     print(f"Extracted 'Likely PN' for ID {object_id}: {likely_pn_value}")
-                    f_output.write(f"{object_id}, {likely_pn_value}\n")
+                    f_output.write(f"{object_id}, {likely_pn_value}, {img_path}\n")
 
 except requests.HTTPError as e:
     print(f"HTTP error occurred during login or data retrieval: {e}")  # Handle HTTP errors
