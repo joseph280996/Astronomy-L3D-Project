@@ -52,7 +52,7 @@ class PNDataset(torchvision.datasets.ImageFolder):
         self.targets = [target for _, target in filtered_samples]
 
 def make_pn_data_loaders(
-        root=os.path.abspath('..', 'l3d_pn_dataset'),
+        root=os.path.abspath('../l3d_pn_dataset1000'),
         transform=DEFAULT_IM_PREPROCESSING,
         target_transform=None,
         batch_size=64,
