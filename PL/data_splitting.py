@@ -2,6 +2,7 @@ import os
 import shutil
 import numpy as np
 
+
 def lp_pl_preprocessing(dataset_path, save_path):
     # List all files
     files = os.listdir(dataset_path)
@@ -27,19 +28,25 @@ def lp_pl_preprocessing(dataset_path, save_path):
         sampling_and_split(False_PN_files)
     )
 
-    if not os.path.exists(save_path) or not os.path.isdir(save_path):
+    if (
+        not os.path.exists(os.path.join(save_path, "l3d_pn_dataset500LP"))
+        or not os.path.exists(os.path.join(save_path, "l3d_pn_dataset500PL"))
+        or not os.path.isdir(os.path.join(save_path, "l3d_pn_dataset500LP"))
+        or not os.path.isdir(os.path.join(save_path, "l3d_pn_dataset500PL"))
+    ):
         # Create destination if it doesn't exist
         save_arr = [
-            ("LP", "train", "True_PN", lp_train_true_set),
-            ("LP", "train", "False_PN", lp_train_false_set),
-            ("LP", "test", "True_PN", lp_test_true_set),
-            ("LP", "test", "False_PN", lp_test_false_set),
-            ("PL", "train", "True_PN", pl_train_true_set),
-            ("PL", "train", "False_PN", pl_train_false_set),
-            ("PL", "test", "True_PN", pl_test_true_set),
-            ("PL", "test", "False_PN", pl_test_false_set),
+            ("l3d_pn_dataset500LP", "train", "True_PN", lp_train_true_set),
+            ("l3d_pn_dataset500LP", "train", "False_PN", lp_train_false_set),
+            ("l3d_pn_dataset500LP", "test", "True_PN", lp_test_true_set),
+            ("l3d_pn_dataset500LP", "test", "False_PN", lp_test_false_set),
+            ("l3d_pn_dataset500PL", "train", "True_PN", pl_train_true_set),
+            ("l3d_pn_dataset500PL", "train", "False_PN", pl_train_false_set),
+            ("l3d_pn_dataset500PL", "test", "True_PN", pl_test_true_set),
+            ("l3d_pn_dataset500PL", "test", "False_PN", pl_test_false_set),
         ]
         save_result(save_arr, save_path)
+
 
 def save_result(save_arr, save_path):
     for method, set_type, label, dataset in save_arr:
@@ -48,7 +55,6 @@ def save_result(save_arr, save_path):
         os.makedirs(destination_path, exist_ok=True)
 
         copy_files(dataset, destination_path)
-        
 
 
 def sampling_and_split(data_files):
