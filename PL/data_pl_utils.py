@@ -1,6 +1,12 @@
 import numpy as np
+import pandas as pd
+import os
+import torchvision
 
 import torch
+from torch.utils.data import DataLoader, Subset, TensorDataset
+from sklearn.model_selection import train_test_split
+
 
 def make_expanded_data_loader(
         source_model, tr_loader, unlab_loader,
@@ -107,3 +113,116 @@ def make_pseudolabels_for_most_confident_fraction(
     return xnew_X2, ynew_X
 
 
+# Constants for image preprocessing
+mean_pn_RGB_3 = [0.485, 0.456, 0.406]
+stddev_pn_RGB_3 = [0.229, 0.224, 0.225]
+
+DEFAULT_IM_PREPROCESSING = torchvision.transforms.Compose([
+    torchvision.transforms.CenterCrop(256),
+    torchvision.transforms.ToTensor(),
+    torchvision.transforms.Normalize(mean=mean_pn_RGB_3, std=stddev_pn_RGB_3),
+])
+
+IM_PREPROCESSING_FOR_VIEW = torchvision.transforms.Compose([
+    torchvision.transforms.CenterCrop(256),
+    torchvision.transforms.ToTensor(),
+])
+
+AUGMENTATION_TRANSFORMS = torchvision.transforms.Compose([
+    torchvision.transforms.RandomHorizontalFlip(),
+    torchvision.transforms.RandomRotation(15),
+    torchvision.transforms.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.4, hue=0.1),
+    torchvision.transforms.RandomAffine(degrees=15, translate=(0.1, 0.1), scale=(0.9, 1.1)),
+    torchvision.transforms.CenterCrop(256),
+    torchvision.transforms.ToTensor(),
+    torchvision.transforms.Normalize(mean=mean_pn_RGB_3, std=stddev_pn_RGB_3),
+])
+
+class PNDataset(torchvision.datasets.ImageFolder):
+    def __init__(
+        self, 
+        root, 
+        transform=None, 
+        target_transform=None, 
+        n_samples_per_class=None
+    ):
+        super().__init__(root, transform=transform, target_transform=target_transform)
+        self.n_samples_per_class = n_samples_per_class
+        
+        if self.n_samples_per_class is not None:
+            self._filter_samples()
+    
+    def transform_for_viz(self, x):
+        return IM_PREPROCESSING_FOR_VIEW(x)
+    
+    def _filter_samples(self):
+        class_counts = {}
+        filtered_samples = []
+        
+        for sample, target in self.samples:
+            if target not in class_counts:
+                class_counts[target] = 0
+                
+            if class_counts[target] < self.n_samples_per_class:
+                filtered_samples.append((sample, target))
+                class_counts[target] += 1
+                
+        self.samples = filtered_samples
+        self.targets = [target for _, target in filtered_samples]
+
+def create_mixmatch_loaders(
+    train_loader: DataLoader,
+    unlabeled_frac: float = 0.8,
+    random_state: int = 1234
+):
+    """
+    Create labeled and unlabeled data loaders for MixMatch from a training loader
+    """
+    # Collect all data from the loader
+    all_data = []
+    all_targets = []
+    
+    for data, targets in train_loader:
+        all_data.append(data)
+        all_targets.append(targets)
+    
+    all_data = torch.cat(all_data)
+    all_targets = torch.cat(all_targets)
+    
+    # Calculate split sizes
+    total_size = len(all_data)
+    unlabeled_size = int(total_size * unlabeled_frac)
+    labeled_size = total_size - unlabeled_size
+    
+    # Create train/unlabeled split
+    indices = torch.randperm(total_size)
+    labeled_indices = indices[:labeled_size]
+    unlabeled_indices = indices[labeled_size:]
+    
+    # Create datasets
+    labeled_data = all_data[labeled_indices]
+    labeled_targets = all_targets[labeled_indices]
+    unlabeled_data = all_data[unlabeled_indices]
+    unlabeled_targets = torch.zeros_like(all_targets[unlabeled_indices])
+    
+    labeled_dataset = TensorDataset(labeled_data, labeled_targets)
+    unlabeled_dataset = TensorDataset(unlabeled_data, unlabeled_targets)
+    
+    # Create loaders with same batch size as original
+    labeled_loader = DataLoader(
+        labeled_dataset,
+        batch_size=train_loader.batch_size,
+        shuffle=True,
+        num_workers=train_loader.num_workers,
+        pin_memory=train_loader.pin_memory
+    )
+    
+    unlabeled_loader = DataLoader(
+        unlabeled_dataset,
+        batch_size=train_loader.batch_size,
+        shuffle=True,
+        num_workers=train_loader.num_workers,
+        pin_memory=train_loader.pin_memory
+    )
+    
+    return labeled_loader, unlabeled_loader

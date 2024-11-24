@@ -1,3 +1,4 @@
+
 from typing import OrderedDict
 import torch
 import numpy as np
@@ -8,15 +9,16 @@ arch2modelname = {
         'ResNet26': 'resnet26',
         'MobileNet_x1':'mobilenet_w1',
         'MobileNet_x0.25': 'mobilenet_wd4',
+        'DenseNet201': 'densenet201',
 }
 
-class PretrainedResNet(torch.nn.Module):
+class PretrainedResNetForPN(torch.nn.Module):
     def __init__(self,
                  src_dataset='ImageNet1k', 
                  arch='ResNet10',
                  model_dir='.',
                  n_trainable_layers=1,
-                 n_target_classes=10,
+                 n_target_classes=2,
                  seed=42):
         super().__init__()
 
@@ -63,7 +65,7 @@ class PretrainedResNet(torch.nn.Module):
         '''
         self.n_trainable_layers = int(n_trainable_layers)
         # Define last n layers as the trainable ones
-        self.trainable_layer_names = self.layer_names[-self.n_trainable_layers:] # TODO FIXME
+        self.trainable_layer_names = self.layer_names[-self.n_trainable_layers:]
         self.trainable_params = dict()
         n_params = 0
         # Iterate over parameters in our current model
@@ -74,11 +76,13 @@ class PretrainedResNet(torch.nn.Module):
             # name contains the name of a trainable layer
             is_trainable = sum([name.count(n) for n in self.trainable_layer_names])
             if is_trainable:
-                param.requires_grad = True
+                param.requires_grad = True  # make param trainable
                 self.trainable_params[name] = param
                 n_params += np.prod(param.shape)
             else:
-                param.requires_grad = False
+                param.requires_grad = False  # make param not trainable
+                # pass # does nothing, just placeholder
+
         msg = "Trainable parameter count=%d over %d tensors in layers: %s." % (
             n_params, len(self.trainable_params),
             ','.join(self.trainable_layer_names))

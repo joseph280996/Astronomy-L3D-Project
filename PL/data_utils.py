@@ -12,7 +12,7 @@ stddev_pn_RGB_3 = [0.229, 0.224, 0.225]
 
 DEFAULT_IM_PREPROCESSING = torchvision.transforms.Compose(
     [
-        torchvision.transforms.CenterCrop(256),
+        torchvision.transforms.CenterCrop(224),
         torchvision.transforms.ToTensor(),
         torchvision.transforms.Normalize(mean=mean_pn_RGB_3, std=stddev_pn_RGB_3),
     ]
@@ -20,7 +20,7 @@ DEFAULT_IM_PREPROCESSING = torchvision.transforms.Compose(
 
 IM_PREPROCESSING_FOR_VIEW = torchvision.transforms.Compose(
     [
-        torchvision.transforms.CenterCrop(256),
+        torchvision.transforms.CenterCrop(224),
         torchvision.transforms.ToTensor(),
     ]
 )
