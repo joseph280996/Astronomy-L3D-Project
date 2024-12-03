@@ -120,22 +120,11 @@ stddev_pn_RGB_3 = [0.229, 0.224, 0.225]
 DEFAULT_IM_PREPROCESSING = torchvision.transforms.Compose([
     torchvision.transforms.CenterCrop(256),
     torchvision.transforms.ToTensor(),
-    torchvision.transforms.Normalize(mean=mean_pn_RGB_3, std=stddev_pn_RGB_3),
 ])
 
 IM_PREPROCESSING_FOR_VIEW = torchvision.transforms.Compose([
     torchvision.transforms.CenterCrop(256),
     torchvision.transforms.ToTensor(),
-])
-
-AUGMENTATION_TRANSFORMS = torchvision.transforms.Compose([
-    torchvision.transforms.RandomHorizontalFlip(),
-    torchvision.transforms.RandomRotation(15),
-    torchvision.transforms.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.4, hue=0.1),
-    torchvision.transforms.RandomAffine(degrees=15, translate=(0.1, 0.1), scale=(0.9, 1.1)),
-    torchvision.transforms.CenterCrop(256),
-    torchvision.transforms.ToTensor(),
-    torchvision.transforms.Normalize(mean=mean_pn_RGB_3, std=stddev_pn_RGB_3),
 ])
 
 class PNDataset(torchvision.datasets.ImageFolder):
