@@ -17,6 +17,15 @@ DEFAULT_IM_PREPROCESSING = torchvision.transforms.Compose(
     ]
 )
 
+IM_PREPROCESSING_FOR_MIXMATCH = torchvision.transforms.Compose(
+    [
+        torchvision.transforms.Pad(padding=28),
+        torchvision.transforms.RandomCrop(224),
+        torchvision.transforms.RandomHorizontalFlip(p=0.5),
+        torchvision.transforms.RandomVerticalFlip(p=0.5),
+    ]
+)
+
 IM_PREPROCESSING_FOR_VIEW = torchvision.transforms.Compose(
     [
         torchvision.transforms.CenterCrop(224),
@@ -53,6 +62,19 @@ class PNDataset(torchvision.datasets.ImageFolder):
         self.samples = filtered_samples
         self.targets = [target for _, target in filtered_samples]
 
+class TransformSubset:
+    def __init__(self, subset, additional_transform):
+        self.subset = subset
+        self.additional_transform = additional_transform
+    
+    def __getitem__(self, index):
+        x, y = self.subset[index]
+        if self.additional_transform:
+            x = self.additional_transform(x)
+        return x, y
+    
+    def __len__(self):
+        return len(self.subset)
 
 def make_data_loaders(
     root=os.path.abspath("../l3d_pn_dataset500LP"),
@@ -83,12 +105,15 @@ def make_data_loaders(
     # Create data subsets from indices
     Subset = torch.utils.data.Subset
     lp_tr_set = Subset(lp_pn_dev, lp_tr_idx)
+    lp_tr_set = TransformSubset(lp_tr_set, IM_PREPROCESSING_FOR_MIXMATCH)
     lp_va_set = Subset(lp_pn_dev, lp_val_idx)
     lp_te_set = Subset(lp_pn_test, np.arange(len(lp_pn_test)))
 
     if verbose:
         # Print summary of dataset, in terms of counts by class for each split
         def get_y(subset):
+            if isinstance(subset, TransformSubset):
+                return [subset.subset.dataset.targets[i] for i in subset.subset.indices]
             return [subset.dataset.targets[i] for i in subset.indices]
 
         y_vals = np.unique(np.union1d(get_y(lp_tr_set), get_y(lp_te_set)))

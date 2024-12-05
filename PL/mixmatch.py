@@ -47,8 +47,6 @@ class MixMatch:
         
         # Setup default augmentations
         self.augmentation_pool = transforms.Compose([
-            torchvision.transform.GaussianBlur(sigma=(0, 0.5)),
-            transforms.RandomPadandCrop(32),
             transforms.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.4, hue=0.2),
             transforms.ToTensor()
         ])
