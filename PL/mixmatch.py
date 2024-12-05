@@ -66,8 +66,6 @@ class MixMatch:
     def guess_labels(self, ub: torch.Tensor) -> torch.Tensor:
         """Generate pseudo-labels for unlabeled data"""
         with torch.no_grad():
-            for _ in range(self.K):
-                ub = self.augment(ub)
             pseudo_logits = F.softmax(self.model(ub), dim=1)
             pseudo_logits /= self.K
             return self.sharpen(pseudo_logits)
@@ -92,7 +90,8 @@ class MixMatch:
 
     def train(
         self,
-        tr_loader: DataLoader,
+        labeled_loader: DataLoader,
+        unlabeled_loader: DataLoader,
         va_loader: DataLoader,
         num_epochs: int = 100,
         learning_rate: float = 0.0001,
@@ -102,11 +101,6 @@ class MixMatch:
         """
         Train the model using MixMatch with progress bars
         """
-
-        labeled_loader, unlabeled_loader = data_pl_utils.create_mixmatch_loaders(
-            train_loader=tr_loader,
-            unlabeled_frac=0.8
-        )
 
         # Setup optimizer and scheduler
         if optimizer is None:
@@ -120,7 +114,7 @@ class MixMatch:
 
         best_va_loss = float('inf')
 
-        n_train = float(len(tr_loader.dataset))
+        n_train = float(len(labeled_loader.dataset)) + float(len(unlabeled_loader.dataset))
         n_valid = float(len(va_loader.dataset))
         
         # Create epoch progress bar
@@ -140,7 +134,7 @@ class MixMatch:
                 for _, ((x, y), (u, _)) in enumerate(zip(labeled_loader, unlabeled_loader)):
                     optimizer.zero_grad()
 
-                    x_b = self.augment(x.to(self.device))
+                    x_b = x.to(self.device)
                     y = y.to(self.device)
                     u = u.to(self.device)
                     
