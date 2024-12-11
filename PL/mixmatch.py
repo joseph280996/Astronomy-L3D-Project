@@ -206,7 +206,7 @@ class MixMatch:
                     # loss = F.cross_entropy(outputs, targets_one_hot)
                     
                     # Option 2: Using standard cross entropy (current approach)
-                    loss = F.cross_entropy(outputs, targets, reduction='sum')
+                    loss = self.xent_fn(outputs, targets)
                     
                     total_loss += loss.item()  # Weight by batch size
                     _, predicted = outputs.max(1)

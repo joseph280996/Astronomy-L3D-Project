@@ -36,7 +36,7 @@ class MixMatch:
         self,
         model: nn.Module,
         optimizer,
-        ema_optimizer,
+        # ema_optimizer,
         num_augmentations: int = 2,
         temperature: float = 0.5,
         alpha: float = 0.75,
@@ -65,7 +65,7 @@ class MixMatch:
         self.device = torch.device(device if torch.cuda.is_available() else "cpu")
         self.model = self.model.to(self.device)
         self.optimizer = optimizer
-        self.ema_optimizer = ema_optimizer
+        # self.ema_optimizer = ema_optimizer
 
         # Setup default augmentations
         self.augmentation_pool = transforms.Compose(
@@ -107,9 +107,7 @@ class MixMatch:
             batch_size = inputs_x.size(0)
 
             # Transform label to one-hot
-            targets_x = torch.zeros(batch_size, 10).scatter_(
-                1, targets_x.view(-1, 1).long(), 1
-            )
+            targets_x = torch.nn.functional.one_hot(targets_x, 2).float()
 
             inputs_x, targets_x = inputs_x.to(self.device), targets_x.to(
                 self.device, non_blocking=True
@@ -169,7 +167,7 @@ class MixMatch:
             self.optimizer.zero_grad()
             loss.backward()
             self.optimizer.step()
-            self.ema_optimizer.step()
+            # self.ema_optimizer.step()
 
         return (
             losses.avg,
@@ -177,7 +175,7 @@ class MixMatch:
             losses_u.avg,
         )
 
-    def validate(self, valloader, mode):
+    def validate(self, valloader):
 
         losses = AverageMeter()
         top1 = AverageMeter()
@@ -185,7 +183,7 @@ class MixMatch:
 
         # switch to evaluate mode
         self.model.eval()
-        criterion = nn.CrossEntropy()
+        criterion = nn.CrossEntropyLoss()
 
         with torch.no_grad():
             for batch_idx, (inputs, targets) in enumerate(valloader):
@@ -196,7 +194,7 @@ class MixMatch:
                 loss = criterion(outputs, targets)
 
                 # measure accuracy and record loss
-                prec1, prec5 = self.accuracy(outputs, targets, topk=(1, 5))
+                prec1, prec5 = (outputs == 
                 losses.update(loss.item(), inputs.size(0))
                 top1.update(prec1.item(), inputs.size(0))
                 top5.update(prec5.item(), inputs.size(0))
@@ -211,7 +209,7 @@ class MixMatch:
 
         return Lx, Lu, self.lambda_u
 
-    def interleave_offsets(batch, nu):
+    def interleave_offsets(self, batch, nu):
         groups = [batch // (nu + 1)] * (nu + 1)
         for x in range(batch - sum(groups)):
             groups[-x - 1] += 1
