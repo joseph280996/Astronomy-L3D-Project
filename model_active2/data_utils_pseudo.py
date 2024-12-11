@@ -38,6 +38,7 @@ DEFAULT_IM_PREPROCESSING = torchvision.transforms.Compose([
 
 # For labeled data
 labeled_transform = transforms.Compose([
+    transforms.ColorJitter(brightness=0.1, contrast=0.1, saturation=0.1, hue=0.05),
     transforms.CenterCrop(224),
     transforms.ToTensor(),
     #transforms.Normalize(mean=mean_inet_RGB_3, std=stddev_inet_RGB_3),
@@ -139,7 +140,7 @@ def make_PN_data_loaders_with_unlabeled(
     )
 
     tr_unlabeled_set2 = Subset(
-        PNDataset(root=os.path.join(root, 'train'), transform=unlabeled_random_crop), unlabeled_idx
+        PNDataset(root=os.path.join(root, 'train'), transform=unlabeled_color_jitter), unlabeled_idx
     )
     
     va_set = Subset(PN_dev, val_idx)
