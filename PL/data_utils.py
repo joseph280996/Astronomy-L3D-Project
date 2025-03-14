@@ -4,6 +4,7 @@ import os
 
 import torch
 import torchvision
+from torch.utils.data import DataLoader, Subset, random_split
 
 from sklearn.model_selection import train_test_split
 
@@ -14,7 +15,30 @@ DEFAULT_IM_PREPROCESSING = torchvision.transforms.Compose(
     [
         torchvision.transforms.CenterCrop(224),
         torchvision.transforms.ToTensor(),
-        torchvision.transforms.Normalize(mean=mean_pn_RGB_3, std=stddev_pn_RGB_3),
+    ]
+)
+
+labeled_transform = torchvision.transforms.Compose(
+    [
+        torchvision.transforms.ColorJitter(brightness=0.1, contrast=0.1, saturation=0.1, hue=0.05),
+        torchvision.transforms.RandomRotation(15),
+        torchvision.transforms.Pad(padding=28),
+        torchvision.transforms.RandomCrop(224),
+        torchvision.transforms.RandomHorizontalFlip(p=0.5),
+        torchvision.transforms.RandomVerticalFlip(p=0.5),
+        torchvision.transforms.ToTensor(),
+    ]
+)
+
+unlabeled_transform = torchvision.transforms.Compose(
+    [    
+        torchvision.transforms.ColorJitter(brightness=0.1, contrast=0.1, saturation=0.1, hue=0.05),
+        torchvision.transforms.RandomRotation(15),
+        torchvision.transforms.Pad(padding=28),
+        torchvision.transforms.RandomCrop(224),
+        torchvision.transforms.RandomHorizontalFlip(p=0.5),
+        torchvision.transforms.RandomVerticalFlip(p=0.5),
+        torchvision.transforms.ToTensor(),
     ]
 )
 
@@ -54,51 +78,73 @@ class PNDataset(torchvision.datasets.ImageFolder):
         self.samples = filtered_samples
         self.targets = [target for _, target in filtered_samples]
 
+class TransformSubset:
+    def __init__(self, subset, additional_transform):
+        self.subset = subset
+        self.additional_transform = additional_transform
+    
+    def __getitem__(self, index):
+        x, y = self.subset[index]
+        if self.additional_transform:
+            x = self.additional_transform(x)
+        return x, y
+    
+    def __len__(self):
+        return len(self.subset)
 
-def make_data_loaders(
-    root=os.path.abspath("../l3d_pn_dataset500LP"),
-    transform=DEFAULT_IM_PREPROCESSING,
-    target_transform=None,
-    batch_size=64,
-    n_samples_per_class_trainandvalid=50,
-    frac_valid=0.2,
-    random_state=1234,
-    verbose=True,
-):
-    lp_pn_dev = PNDataset(
-        os.path.join(root, "train"),
-        transform=transform,
-        n_samples_per_class=n_samples_per_class_trainandvalid,
-    )
-    lp_pn_test = PNDataset(os.path.join(root, "test"), transform=transform)
-
+def make_PN_data_loaders_with_unlabeled(
+        root=os.path.abspath('.'),
+        transform=DEFAULT_IM_PREPROCESSING,
+        target_transform=None,
+        batch_size=32,
+        n_samples_per_class_trainandvalid=250,
+        frac_valid=0.2,
+        frac_unlabeled=0.5,  # Fraction of training set to use as unlabeled
+        random_state=23,
+        verbose=True):
+    PN_dev = PNDataset(os.path.join(root, 'train'), transform=transform)
+    
+    PN_test = PNDataset(os.path.join(root, 'test'), transform=transform)
+        
     # Stratified sampling for train and val
-    lp_tr_idx, lp_val_idx = train_test_split(
-        np.arange(len(lp_pn_dev)),
-        test_size=frac_valid,
-        random_state=random_state,
-        shuffle=True,
-        stratify=lp_pn_dev.targets,
+    tr_idx, val_idx = train_test_split(np.arange(len(PN_dev)),
+                                       test_size=frac_valid,
+                                       random_state=random_state,
+                                       shuffle=True,
+                                       stratify=PN_dev.targets)
+
+    # Create labeled and unlabeled subsets
+    labeled_size = int(len(tr_idx) * (1 - frac_unlabeled))
+    unlabeled_size = len(tr_idx) - labeled_size
+
+    labeled_idx, unlabeled_idx = random_split(tr_idx, [labeled_size, unlabeled_size],
+                                              generator=torch.Generator().manual_seed(random_state))
+
+    # Subset for labeled data
+    tr_labeled_set = Subset(
+        PNDataset(root=os.path.join(root, 'train'), transform=labeled_transform), labeled_idx
     )
 
-    # Create data subsets from indices
-    Subset = torch.utils.data.Subset
-    lp_tr_set = Subset(lp_pn_dev, lp_tr_idx)
-    lp_va_set = Subset(lp_pn_dev, lp_val_idx)
-    lp_te_set = Subset(lp_pn_test, np.arange(len(lp_pn_test)))
+    # Subset for unlabeled data
+    tr_unlabeled_set = Subset(
+        PNDataset(root=os.path.join(root, 'train'), transform=unlabeled_transform), unlabeled_idx
+    )
+    
+    va_set = Subset(PN_dev, val_idx)
+    te_set = Subset(PN_test, np.arange(len(PN_test)))
 
     if verbose:
-        # Print summary of dataset, in terms of counts by class for each split
+        # Print summary of dataset
         def get_y(subset):
-            return [subset.dataset.targets[i] for i in subset.indices]
+            return [subset.dataset.targets[i]
+                    for i in subset.indices]
 
-        y_vals = np.unique(np.union1d(get_y(lp_tr_set), get_y(lp_te_set)))
-        row_list = list()
-        for splitname, dset in [
-            ("lp_train", lp_tr_set),
-            ("lp_valid", lp_va_set),
-            ("lp_test", lp_te_set),
-        ]:
+        y_vals = np.unique(PN_dev.targets)
+        row_list = []
+        for splitname, dset in [('train_labeled', tr_labeled_set),
+                                ('train_unlabeled', tr_unlabeled_set),
+                                ('valid', va_set),
+                                ('test', te_set)]:
             y_U, ct_U = np.unique(get_y(dset), return_counts=True)
             y2ct_dict = dict(zip(y_U, ct_U))
             row_dict = dict(splitname=splitname)
@@ -109,9 +155,8 @@ def make_data_loaders(
         print(df.to_string(index=False))
 
     # Convert to DataLoaders
-    DataLoader = torch.utils.data.DataLoader
-    lp_tr_loader = DataLoader(lp_tr_set, batch_size=batch_size, shuffle=True)
-    lp_va_loader = DataLoader(lp_va_set, batch_size=batch_size, shuffle=False)
-    lp_te_loader = DataLoader(lp_te_set, batch_size=batch_size, shuffle=False)
-
-    return lp_tr_loader, lp_va_loader, lp_te_loader
+    labeled_loader = DataLoader(tr_labeled_set, batch_size=batch_size, shuffle=True)
+    unlabeled_loader = DataLoader(tr_unlabeled_set, batch_size=batch_size, shuffle=True)
+    va_loader = DataLoader(va_set, batch_size=batch_size, shuffle=False)
+    te_loader = DataLoader(te_set, batch_size=batch_size, shuffle=False)
+    return labeled_loader, unlabeled_loader, va_loader, te_loader

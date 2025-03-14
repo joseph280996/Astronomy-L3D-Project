@@ -1,15 +1,14 @@
 import torch
+import torchvision
 import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
-from typing import List, Tuple, Optional, Dict
-from torch.utils.data import TensorDataset, DataLoader
+from typing import Tuple, Optional, Dict
+from torch.utils.data import DataLoader
 from torchvision import transforms
 from tqdm import tqdm
-import warnings
 import logging
 import data_pl_utils
-from torch.optim.lr_scheduler import OneCycleLR
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -21,7 +20,7 @@ class MixMatch:
         num_augmentations: int = 2,
         temperature: float = 0.5,
         alpha: float = 0.75,
-        lambda_u: float = 100,
+        lambda_u: float = 75,
         device: str = 'cuda',
         max_grad_norm: float = 1.0
     ):
@@ -48,7 +47,8 @@ class MixMatch:
         
         # Setup default augmentations
         self.augmentation_pool = transforms.Compose([
-            transforms.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.4, hue=0.1),
+            transforms.ColorJitter(brightness=0.4, contrast=0.4, saturation=0.4, hue=0.2),
+            transforms.ToTensor()
         ])
         self.xent_fn = nn.CrossEntropyLoss(reduction = 'sum')
         self.l2_loss_fn = nn.MSELoss(reduction = 'sum')
@@ -66,8 +66,6 @@ class MixMatch:
     def guess_labels(self, ub: torch.Tensor) -> torch.Tensor:
         """Generate pseudo-labels for unlabeled data"""
         with torch.no_grad():
-            for _ in range(self.K):
-                ub = self.augment(ub)
             pseudo_logits = F.softmax(self.model(ub), dim=1)
             pseudo_logits /= self.K
             return self.sharpen(pseudo_logits)
@@ -81,13 +79,7 @@ class MixMatch:
         """
         lam = torch.distributions.Beta(self.alpha, self.alpha).sample().item()
         lam = max(lam, 1 - lam)
-
           
-        # Ensure x1 and x2 have the same shape
-        assert x1.shape == x2.shape, f"Shape mismatch: x1 {x1.shape} vs x2 {x2.shape}"
-        # Ensure y1 and y2 have the same shape
-        assert y1.shape == y2.shape, f"Shape mismatch: y1 {y1.shape} vs y2 {y2.shape}"
-
         # Mix images
         x_mix = lam * x1 + (1 - lam) * x2
         
@@ -98,33 +90,23 @@ class MixMatch:
 
     def train(
         self,
-        tr_loader: DataLoader,
+        labeled_loader: DataLoader,
+        unlabeled_loader: DataLoader,
         va_loader: DataLoader,
-        te_loader: DataLoader,
         num_epochs: int = 100,
-        learning_rate: float = 0.001,
-        l2pen_mag = 0.0,
-        save_path: str = 'best_mixmatch_model.pth',
+        learning_rate: float = 0.0001,
+        l2pen_mag = 0.1,
         optimizer: Optional[torch.optim.Optimizer] = None,
-        do_early_stopping=True,
-        n_epochs_without_va_improve_before_early_stop=15,
     ) -> Dict:
         """
         Train the model using MixMatch with progress bars
         """
 
-        labeled_loader, unlabeled_loader = data_pl_utils.create_mixmatch_loaders(
-            train_loader=tr_loader,
-            unlabeled_frac=0.8
-        )
-
         # Setup optimizer and scheduler
         if optimizer is None:
-            if hasattr(self.model, 'trainable_params'):
-                params = self.model.trainable_params.values()
-            else:
-                params = self.model.parameters()
-            optimizer = torch.optim.Adam(params, lr=learning_rate)
+            optimizer = torch.optim.Adam(
+                filter(lambda p: p.requires_grad, self.model.parameters()),
+                lr=learning_rate)
         
         tr_info = {'loss': [], 'acc': []}
         va_info = {'loss': [], 'acc': []}
@@ -132,6 +114,7 @@ class MixMatch:
 
         best_va_loss = float('inf')
 
+        n_train = float(len(labeled_loader.dataset)) + float(len(unlabeled_loader.dataset))
         n_valid = float(len(va_loader.dataset))
         
         # Create epoch progress bar
@@ -144,14 +127,14 @@ class MixMatch:
                 self.model.train()
                 tr_loss = 0.0
                 tr_acc = 0.0
-                total_sample = 0
                 pbar_info['batch_done'] = 0
                 
                 
                 # Train for one epoch
-                for batch_idx, ((x, y), (u, _)) in enumerate(zip(labeled_loader, unlabeled_loader)):
+                for _, ((x, y), (u, _)) in enumerate(zip(labeled_loader, unlabeled_loader)):
                     optimizer.zero_grad()
-                    x_b = self.augment(x.to(self.device))
+
+                    x_b = x.to(self.device)
                     y = y.to(self.device)
                     u = u.to(self.device)
                     
@@ -169,28 +152,25 @@ class MixMatch:
                     
                     idx = torch.randperm(wx.shape[0])
 
-                    x_mix, y_mix = self.mixup(x_b, y_oh, wx[idx[:x_b.size(0)]], wy[idx[:x_b.size(0)]])
-                    u_mix, q_mix = self.mixup(u, q, wx[idx[x_b.size(0):]], wy[idx[x_b.size(0):]])
+                    x_mix, y_mix = self.mixup(wx, wy, wx[idx], wy[idx])
 
-                    y_mix_pred = self.model(x_mix)
-                    q_mix_pred_logits = self.model(u_mix)
+                    y_mix_pred = self.model(x_mix.to(self.device))
 
                     # Use the mask to compute supervised loss only on relevant examples
                     Lx = self.xent_fn(
-                        y_mix_pred, 
-                        y_mix,
+                        y_mix_pred[:len(x_b)], 
+                        y_mix[:len(x_b)],
                     )
 
                     # Unsupervised loss on the rest
                     Lu = self.l2_loss_fn(
-                        F.softmax(q_mix_pred_logits),
-                        q_mix
+                        F.softmax(y_mix_pred[len(x_b):]),
+                        y_mix[len(x_b):]
                     )
                     
                     loss = Lx + self.lambda_u * Lu
                     
                     # Optimization step
-                    optimizer.zero_grad()
                     loss.backward()
                     optimizer.step()
 
@@ -200,26 +180,25 @@ class MixMatch:
                     # Record losses
                     # Track training metrics
                     tr_loss += loss.item()
-                    total_sample += x_b.size(0)
+                    tr_acc += (y_mix_pred == y_mix).sum().item()
 
                 # Training metrics
-                tr_loss /= total_sample
-                tr_loss /= pbar_info['batch_done']
+                tr_loss /= n_train
+                tr_acc /= n_train
             else:
                 tr_loss = np.nan
+                tr_acc = np.nan
             
             # Validation phase
-            self.model.eval()
-            total_loss = 0
-            correct = 0
-            total_sample = 0
-            
             with torch.no_grad():
+                self.model.eval()
+                total_loss = 0
+                correct = 0
+                
                 for inputs, targets in va_loader:
                     inputs = inputs.to(self.device)
                     targets = targets.to(self.device)
-                    batch_size = inputs.size(0)
-                    
+
                     outputs = self.model(inputs)
                     
                     # Option 1: Using same loss as training
@@ -227,17 +206,15 @@ class MixMatch:
                     # loss = F.cross_entropy(outputs, targets_one_hot)
                     
                     # Option 2: Using standard cross entropy (current approach)
-                    loss = F.cross_entropy(outputs, targets, reduction='mean')
+                    loss = self.xent_fn(outputs, targets)
                     
-                    total_loss += loss.item() * batch_size  # Weight by batch size
+                    total_loss += loss.item()  # Weight by batch size
                     _, predicted = outputs.max(1)
                     correct += predicted.eq(targets).sum().item()
-                    total_sample += inputs.size(0)
             
-            va_loss = total_loss / total_sample
-            va_acc = 100. * correct / total_sample
+            va_loss = total_loss / n_valid
+            va_acc = 100. * correct / n_valid
 
-            
             epochs.append(epoch)
             tr_info['loss'].append(tr_loss)
             va_info['loss'].append(va_loss)
@@ -276,5 +253,28 @@ class MixMatch:
             }
         return self.model, result
     
-    def evaluate(self, loader: DataLoader) -> Tuple[float, float]:
-        """Evaluate the model on a dataset"""
+    def interleave_offsets(self,batch, nu):
+        groups = [batch // (nu + 1)] * (nu + 1)
+        for x in range(batch - sum(groups)):
+            groups[-x - 1] += 1
+        offsets = [0]
+        for g in groups:
+            offsets.append(offsets[-1] + g)
+        assert offsets[-1] == batch
+        return offsets
+
+
+    def interleave(self, xy, batch):
+        nu = len(xy) - 1
+        offsets = self.interleave_offsets(batch, nu)
+        xy = [[v[offsets[p]:offsets[p + 1]] for p in range(nu + 1)] for v in xy]
+        for i in range(1, nu + 1):
+            xy[0][i], xy[i][i] = xy[i][i], xy[0][i]
+        return [torch.cat(v, dim=0) for v in xy]
+
+    def linear_rampup(self, current, rampup_length):
+        if rampup_length == 0:
+            return 1.0
+        else:
+            current = np.clip(current/rampup_length, 0.0, 1.0)
+            return float(current)
