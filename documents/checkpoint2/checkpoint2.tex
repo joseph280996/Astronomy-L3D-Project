@@ -124,14 +124,16 @@ To further prevent leakage/overlap between phases, the labeled portion of the da
 
 % To further prevent leakage/overlap between phases, we will divide our 1,000 images into two groups: one dedicated to the LP-FT phase and another reserved for evaluating the pseudo-labeling phase. For the LP-FT phase, we plan to allocate approximately 50-60\% of the images for supervised training, while the remaining 40-50\% will be withheld for pseudo-label evaluation, ensuring that the pseudo-labeling phase doesn’t inadvertently benefit from exposure to the same images.
 
-\begin{table}[!h]
-    \centering
-    \begin{tabular}{c|c}
-         &  \\
-         & 
-    \end{tabular}
-    \caption{Summary info about splits into train/val/test.}
-    \label{tab:my_label}
+\begin{table}[h!]
+\centering
+\begin{tabular}{|c|c|c|c|c|c|}
+\hline
+\textbf{ID} & \textbf{Name} & \textbf{DRAJ2000} & \textbf{DDECJ2000} & \textbf{Image} & \textbf{Label} \\ \hline
+32280 & Dr 21 & 350.95788 & 45.28179 & \includegraphics[width=1in]{32280_wise432_rgb.png} & True PN \\ \hline
+17907 & NGC 16 & 111.58614 & -34.2072 & \includegraphics[width=1in]{17907_sss_irb2.png} & Rejected PNe (galaxy) \\ \hline
+\end{tabular}
+\caption{Subsample of HashDB dataset}
+
 \end{table}
 
 \subsection{Training and hyperparameter tuning plan}
