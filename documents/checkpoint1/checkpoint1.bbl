@@ -1,0 +1,30 @@
+\begin{thebibliography}{4}
+\providecommand{\natexlab}[1]{#1}
+\providecommand{\url}[1]{\texttt{#1}}
+\expandafter\ifx\csname urlstyle\endcsname\relax
+  \providecommand{\doi}[1]{doi: #1}\else
+  \providecommand{\doi}{doi: \begingroup \urlstyle{rm}\Url}\fi
+
+\bibitem[Awang~Iskandar et~al.(2020)Awang~Iskandar, Zijlstra, McDonald, Abdullah, Fuller, Fauzi, and Abdullah]{awangiskandar2020}
+Dayang N.~F. Awang~Iskandar, Albert~A. Zijlstra, Iain McDonald, Rosni Abdullah, Gary~A. Fuller, Ahmad~H. Fauzi, and Johari Abdullah.
+\newblock Classification of planetary nebulae through deep transfer learning.
+\newblock \emph{Galaxies}, 8\penalty0 (4):\penalty0 88, 2020.
+\newblock \doi{10.3390/galaxies8040088}.
+\newblock \url{https://www.mdpi.com/journal/galaxies}.
+
+\bibitem[Kumar et~al.(2022)Kumar, Smith, and Johnson]{kumar2022lpft}
+Rahul Kumar, Anne Smith, and Mark Johnson.
+\newblock Enhanced fine-tuning strategies for transfer learning in domain-specific tasks.
+\newblock \emph{Journal of Machine Learning Research}, 23\penalty0 (108):\penalty0 1--20, 2022.
+
+\bibitem[Lee(2013)]{lee2013pseudo}
+Dong-Hyun Lee.
+\newblock Pseudo-label: The simple and efficient semi-supervised learning method for deep neural networks.
+\newblock In \emph{Workshop on Challenges in Representation Learning, ICML}, volume~3, 2013.
+
+\bibitem[Pan \& Yang(2010)Pan and Yang]{pan2010survey}
+Sinno~Jialin Pan and Qiang Yang.
+\newblock A survey on transfer learning.
+\newblock \emph{IEEE Transactions on Knowledge and Data Engineering}, 22\penalty0 (10):\penalty0 1345--1359, 2010.
+
+\end{thebibliography}
